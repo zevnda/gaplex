@@ -1,0 +1,6 @@
+{
+  "js/ts.tsdk.path": "node_modules/typescript/lib",
+  "prettier.endOfLine": "lf",
+  "editor.defaultFormatter": "esbenp.prettier-vscode",
+  "editor.formatOnSave": true
+}

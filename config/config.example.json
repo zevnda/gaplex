@@ -1,0 +1,30 @@
+{
+  "playlistUrl": "https://music.youtube.com/playlist?list=PLxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+  "loop": true,
+  "prefetchThresholdSec": 35,
+  "ytdlp": {
+    "binaryPath": "yt-dlp",
+    "extraArgs": [],
+    "metadataTimeoutMs": 20000,
+    "playlistTimeoutMs": 60000
+  },
+  "retry": {
+    "maxAttempts": 4,
+    "initialDelayMs": 2000,
+    "maxDelayMs": 20000,
+    "backoffFactor": 2
+  },
+  "liquidsoap": {
+    "host": "127.0.0.1",
+    "port": 1234,
+    "password": null,
+    "queueId": "gaplex_queue",
+    "commandTimeoutMs": 5000,
+    "ytdlpBinary": "yt-dlp",
+    "processTimeoutSec": 120
+  },
+  "scheduler": {
+    "tickIntervalMs": 1000
+  },
+  "logLevel": "info"
+}
