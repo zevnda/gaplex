@@ -48,6 +48,13 @@ Before continuing you need:
   (suggest `gaplex_queue` if the user has no preference and is setting one
   up fresh)
 
+Optionally, also ask for:
+
+- `RADIO_STREAM_URL`: the Icecast mount URL listeners hit directly (e.g.
+  `http://your-icecast-host:8000/mount.mp3`) — used only as the dashboard's
+  default stream source (see step 5). Not required: if left blank, every
+  visitor just enters their own in the dashboard, so don't block on this one.
+
 ### 3. Clone and configure
 
 ```bash
@@ -56,8 +63,8 @@ cd gaplex
 cp config/config.example.json config/config.json
 ```
 
-Edit `config/config.json`, setting only these three values (leave everything
-else at its default):
+Edit `config/config.json`, setting only these values (leave everything else
+at its default):
 
 ```json
 {
@@ -66,9 +73,16 @@ else at its default):
     "host": "LIQUIDSOAP_HOST",
     "port": LIQUIDSOAP_PORT,
     "queueId": "QUEUE_ID"
+  },
+  "web": {
+    "radioStreamUrl": "RADIO_STREAM_URL"
   }
 }
 ```
+
+Drop the `web` block entirely if `RADIO_STREAM_URL` wasn't provided (step 2) —
+`radioStreamUrl` defaults to `null`, which just means the dashboard asks each
+visitor for their own stream URL instead of pre-filling one.
 
 ### 4. Make sure Liquidsoap exposes what Gaplex needs
 
@@ -107,9 +121,9 @@ docker run -d \
   gaplex
 ```
 
-The `-p 4242:4242` publishes the now-playing dashboard (see "Dashboard" below).
-Drop it, or set `web.enabled` to `false` in the config, if you don't want it
-reachable.
+The `-p 4242:4242` publishes the now-playing dashboard (see "Dashboard" below)
+at `http://<docker-host>:4242`. Drop it, or set `web.enabled` to `false` in
+the config, if you don't want it reachable.
 
 If Liquidsoap runs on the Docker host itself rather than in a container, use
 `host.docker.internal` as `liquidsoap.host` instead of `127.0.0.1`, since
@@ -137,8 +151,15 @@ Success looks like:
   step 4's yt-dlp/Deno install on the Liquidsoap side was likely skipped or
   failed. Check Liquidsoap's own logs, not Gaplex's, for the real error.
 
-The installation is complete once step 6 shows a `Now playing` line and
-audio is actually audible on the Icecast stream.
+If `web.enabled` wasn't set to `false`, also open `http://<docker-host>:4242`
+and confirm the dashboard loads, shows a "Now playing" title, and that the
+Skip button changes it. If the page loads but the "Now playing" title never
+appears, that also points back at the ECONNREFUSED/yt-dlp checks above —
+the dashboard only reflects Gaplex's own scheduler state, it doesn't add a
+new failure mode of its own.
+
+The installation is complete once step 6 shows a `Now playing` line, audio is
+actually audible on the Icecast stream, and (if enabled) the dashboard loads.
 
 ## Commands
 
