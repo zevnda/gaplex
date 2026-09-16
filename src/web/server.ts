@@ -34,8 +34,9 @@ const STATIC_ASSETS: Record<string, { file: string; contentType: string }> = {
 /**
  * Serves the now-playing dashboard: the static page/assets above, plus the
  * small JSON API it polls (`/api/status`, `/api/config`) and posts to
- * (`/api/skip`, `/api/playlist`). Kept as a plain `node:http` server rather
- * than pulling in a framework — a handful of fixed routes don't need one.
+ * (`/api/skip`, `/api/playlist`, `/api/liquidsoap/track-started` — see
+ * `handleTrackStarted`). Kept as a plain `node:http` server rather than
+ * pulling in a framework — a handful of fixed routes don't need one.
  */
 export async function startWebServer(config: AppConfig, scheduler: PrefetchScheduler, log: Logger) {
   const assets = new Map<string, { body: string; contentType: string }>()
@@ -78,6 +79,11 @@ export async function startWebServer(config: AppConfig, scheduler: PrefetchSched
 
     if (method === 'POST' && url === '/api/playlist') {
       handlePlaylistSwitch(req, res, scheduler, log)
+      return
+    }
+
+    if (method === 'POST' && url === '/api/liquidsoap/track-started') {
+      handleTrackStarted(req, res, scheduler)
       return
     }
 
@@ -133,6 +139,35 @@ function handlePlaylistSwitch(
       log.error(`Dashboard playlist switch failed: ${errorMessage(error)}`)
       sendJson(res, 500, { ok: false, error: errorMessage(error) })
     })
+}
+
+/**
+ * Called by an optional `on_track` hook on the Liquidsoap side (see
+ * AGENTS.md Installation step 4) the instant it genuinely starts a track —
+ * the whole point being that Gaplex no longer has to *guess* that from its
+ * own planned-duration clock. No payload is required or inspected (see
+ * `PrefetchScheduler.handleTrackStarted`'s own comment for how it figures
+ * out which track that was without one); the body is drained and discarded
+ * either way, just to let the request complete cleanly.
+ *
+ * Unauthenticated, like every other endpoint here — this dashboard's whole
+ * surface assumes a trusted network, not the public internet (see the
+ * Liquidsoap telnet auth note elsewhere in AGENTS.md for the same
+ * assumption on that side). Anyone who can already reach this port can
+ * already skip through the playlist via `/api/skip`; a forged call here has
+ * no worse a blast radius than that.
+ */
+function handleTrackStarted(
+  req: IncomingMessage,
+  res: ServerResponse,
+  scheduler: PrefetchScheduler,
+) {
+  req.on('error', () => {})
+  req.on('end', () => {
+    scheduler.handleTrackStarted()
+    sendJson(res, 200, { ok: true })
+  })
+  req.resume()
 }
 
 function readJsonBody(req: IncomingMessage) {

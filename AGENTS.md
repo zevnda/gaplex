@@ -54,6 +54,13 @@ Optionally, also ask for:
   `http://your-icecast-host:8000/mount.mp3`) — used only as the dashboard's
   default stream source (see step 5). Not required: if left blank, every
   visitor just enters their own in the dashboard, so don't block on this one.
+- `GAPLEX_WEB_URL`: where Gaplex's own dashboard is reachable *from the
+  Liquidsoap side* (e.g. `http://gaplex:4242` on a shared docker-compose
+  network, per step 5) — only needed for the optional `on_track` hook in
+  step 4, which tells Gaplex the instant a track genuinely starts instead of
+  it estimating that from planned durations. Skip it if you don't want that;
+  Gaplex works fine without it, just with a little more clock drift over a
+  long session.
 
 ### 3. Clone and configure
 
@@ -94,6 +101,33 @@ server.telnet(port=LIQUIDSOAP_PORT)
 radio = request.queue(id="QUEUE_ID")
 # use `radio` as the source feeding the existing Icecast output
 ```
+
+**Optional, but recommended if `GAPLEX_WEB_URL` was provided (step 2):** tell
+Gaplex the instant a track genuinely starts, rather than leaving it to guess
+from planned durations. Add this right after the `radio = request.queue(...)`
+line above:
+
+```liquidsoap
+def on_track_start(_) =
+  ignore(
+    http.post(
+      headers=[("content-type", "application/json")],
+      data="{}",
+      timeout=5.,
+      "GAPLEX_WEB_URL/api/liquidsoap/track-started"
+    )
+  )
+end
+radio.on_track(synchronous=false, on_track_start)
+```
+
+`synchronous=false` matters: it runs the HTTP call off the audio thread, so a
+slow or failing request to Gaplex can never stall playback. This is additive,
+not a replacement — Gaplex's own clock still drives playback on its own if
+this is skipped or the call fails; wiring it up just keeps that clock
+resynced to Liquidsoap's real timing instead of letting it drift (see
+`PrefetchScheduler`'s own doc comment, further down, for exactly how the two
+cooperate).
 
 And the machine/container Liquidsoap itself runs in needs yt-dlp and Deno
 installed too, since Liquidsoap invokes yt-dlp directly as a subprocess to
@@ -153,6 +187,12 @@ Liquidsoap runs in a separate `docker-compose.yml` project entirely, you'll
 need to either merge them into one file, or set up a shared external Docker
 network so both projects' containers can reach each other by name.
 
+The same reasoning runs in reverse for `GAPLEX_WEB_URL` (step 2/4, the
+optional `on_track` hook): on a shared compose network it's just
+`http://gaplex:4242` (the `gaplex` service name resolves the same way
+`liquidsoap.host` does above) — no need to expose the `ports:` mapping
+publicly just for Liquidsoap to reach it internally.
+
 **Updating Gaplex later:** pull the latest code, then re-run the build:
 
 ```bash
@@ -189,6 +229,17 @@ Skip button changes it. If the page loads but the "Now playing" title never
 appears, that also points back at the ECONNREFUSED/yt-dlp checks above —
 the dashboard only reflects Gaplex's own scheduler state, it doesn't add a
 new failure mode of its own.
+
+If step 4's optional `on_track` hook was wired up, confirm it's actually
+reaching Gaplex: `docker compose logs -f gaplex` should show a debug-level
+`"Liquidsoap confirmed ... — resynced start time"` line shortly after each
+track starts (bump `logLevel` to `"debug"` in the config if you don't see it
+— it's silent at the default `"info"` level, deliberately, since it fires
+every track). If instead you see `"nothing was pending — ignoring"`
+repeatedly, `GAPLEX_WEB_URL` most likely can't actually reach Gaplex from the
+Liquidsoap side — recheck step 5's networking note. Either way, this is
+diagnostic only: Gaplex's own clock keeps playback running regardless, so a
+broken hook here degrades sync quality, it doesn't break playback.
 
 The installation is complete once step 6 shows a `Now playing` line, audio is
 actually audible on the Icecast stream, and (if enabled) the dashboard loads.
@@ -285,6 +336,28 @@ exhausts its retry budget is permanently dropped from the playlist for the
 rest of that run (`PlaylistManager.dropEntry`), so it isn't retried forever
 on future loops.
 
+**Staying in sync with what Liquidsoap is actually doing.** The clock above
+is a *guess*, seeded from a planned duration — it can never perfectly match
+Liquidsoap's real playhead (encoding differences, buffering, etc.), and that
+guess compounds a little further with every track over a long session. To
+fix that without polling Liquidsoap (nothing in its telnet interface exposes
+"how far into this track are we," verified against `request.queue`'s actual
+source the same way `flushQueue`'s commands were — see below), Gaplex
+accepts an optional push notification instead: `PrefetchScheduler.
+handleTrackStarted()`, called from `POST /api/liquidsoap/track-started`
+(`src/web/server.ts`), fired by an optional `on_track` hook on the
+Liquidsoap side (Installation step 4). The two mechanisms are designed to
+coexist, not for one to replace the other — full reasoning, including how a
+webhook call with no payload can still reliably identify *which* track
+started (`pushedQueue`, a FIFO mirroring Liquidsoap's own push order), lives
+in `PrefetchScheduler`'s class-level doc comment and `handleTrackStarted()`
+itself. Only verified against Liquidsoap's actual source (`on_track` in
+`src/libs/source.liq`, `http.post` in `src/core/builtins/builtins_http.ml`,
+both checked against v2.4.5) and a scripted fake standing in for Liquidsoap
+— not against a real Liquidsoap instance, which wasn't available to test
+against here. If you do wire this up, step 6's verification covers what to
+check for.
+
 ### `PlaylistManager` (`src/playlist/playlist-manager.ts`)
 
 Tracks the current position by track **id**, not array index. This matters:
@@ -305,7 +378,9 @@ with a `thumbnailUrl`, `artist` — null when yt-dlp found no "Music"
 attribution for that video — and `videoUrl`, which the dashboard links the
 title to, plus the live `playlistUrl`), `GET /api/config` (the
 configured default stream URL), `POST /api/skip`, `POST /api/playlist`
-(switch the running playlist). `public/` isn't `.ts`, so `tsc` never touches it;
+(switch the running playlist), `POST /api/liquidsoap/track-started` (see
+"Staying in sync" above — meant for Liquidsoap to call, not the dashboard
+itself). `public/` isn't `.ts`, so `tsc` never touches it;
 `pnpm build` copies it into `dist/web/public` afterwards
 (`scripts/copy-assets.mjs`) — `server.ts` resolves it relative to its own
 compiled location so the same code works run from `src/` (`tsx`) or `dist/`.
