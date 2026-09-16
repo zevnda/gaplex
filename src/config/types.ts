@@ -48,6 +48,21 @@ export interface SchedulerConfig {
   tickIntervalMs: number
 }
 
+export interface WebConfig {
+  /** Serves the now-playing dashboard when true. */
+  enabled: boolean
+  host: string
+  port: number
+  /**
+   * Default Icecast (or other) stream URL the dashboard embeds and autoplays.
+   * This is only a starting value — every listener's browser is reachable at
+   * a different address than wherever Gaplex itself runs, so the dashboard
+   * lets each visitor override it, stored in that browser's localStorage.
+   * Leave null if you'd rather every visitor enter their own.
+   */
+  radioStreamUrl: string | null
+}
+
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error'
 
 export interface AppConfig {
@@ -60,6 +75,7 @@ export interface AppConfig {
   retry: RetryConfig
   liquidsoap: LiquidsoapConfig
   scheduler: SchedulerConfig
+  web: WebConfig
   logLevel: LogLevel
 }
 
@@ -72,5 +88,6 @@ export interface ConfigFileInput {
   retry?: Partial<RetryConfig>
   liquidsoap?: Partial<LiquidsoapConfig>
   scheduler?: Partial<SchedulerConfig>
+  web?: Partial<WebConfig>
   logLevel?: LogLevel
 }

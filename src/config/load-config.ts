@@ -34,6 +34,12 @@ const DEFAULTS: Omit<AppConfig, 'playlistUrl'> = {
   scheduler: {
     tickIntervalMs: 1_000,
   },
+  web: {
+    enabled: true,
+    host: '0.0.0.0',
+    port: 4242,
+    radioStreamUrl: null,
+  },
   logLevel: 'info',
 }
 
@@ -54,6 +60,7 @@ export async function loadConfig(argv: string[]) {
     retry: { ...DEFAULTS.retry, ...fileInput.retry },
     liquidsoap: { ...DEFAULTS.liquidsoap, ...fileInput.liquidsoap },
     scheduler: { ...DEFAULTS.scheduler, ...fileInput.scheduler },
+    web: { ...DEFAULTS.web, ...fileInput.web },
     logLevel: fileInput.logLevel ?? DEFAULTS.logLevel,
   }
 
@@ -112,6 +119,9 @@ function validateConfig(config: AppConfig) {
   }
   if (config.scheduler.tickIntervalMs <= 0) {
     problems.push('scheduler.tickIntervalMs must be greater than 0')
+  }
+  if (config.web.port <= 0 || config.web.port > 65_535) {
+    problems.push(`web.port is out of range: ${config.web.port}`)
   }
 
   if (problems.length > 0) {

@@ -102,9 +102,14 @@ docker build -t gaplex .
 docker run -d \
   --name gaplex \
   --restart unless-stopped \
+  -p 4242:4242 \
   -v "$(pwd)/config/config.json:/app/config/config.json:ro" \
   gaplex
 ```
+
+The `-p 4242:4242` publishes the now-playing dashboard (see "Dashboard" below).
+Drop it, or set `web.enabled` to `false` in the config, if you don't want it
+reachable.
 
 If Liquidsoap runs on the Docker host itself rather than in a container, use
 `host.docker.internal` as `liquidsoap.host` instead of `127.0.0.1`, since
@@ -192,6 +197,7 @@ src/
   scheduler/    The prefetch scheduler — the core gapless-playback logic
   types/        Shared domain types (PlaylistEntry, TrackMetadata)
   util/         Small standalone helpers (retry/backoff, CLI args, formatting)
+  web/          Now-playing dashboard: HTTP server + inline HTML/CSS/JS page
   ytdlp/        yt-dlp process invocation and output parsing
 ```
 
@@ -227,6 +233,31 @@ adjustment depending on where the dropped entry sat relative to it —
 especially across a `loop` wraparound, where "upcoming" can wrap to index 0
 while "current" sits at the end of the array. Tracking by id sidesteps that
 class of bug entirely.
+
+### Dashboard (`src/web/`)
+
+A small `node:http` server (`server.ts`) serves one page (`dashboard-page.ts`,
+inline HTML/CSS/JS — no bundler, since `tsc`'s build has no asset-copy step)
+plus the JSON API it polls/posts to: `GET /api/status` (current + next track),
+`GET /api/config` (the configured default stream URL), `POST /api/skip`.
+
+The page embeds the actual Icecast stream in an `<audio>` element and tries
+to autoplay it; the play/pause button only controls that local `<audio>`
+element — it's a listening control, not a broadcast control. "Skip" is the
+only control that reaches back into Liquidsoap.
+
+The Icecast stream URL is reachable from each listener's browser, not from
+wherever Gaplex runs, so it can't be a fixed server value: `web.radioStreamUrl`
+in config is only a *default* the page offers on first load. Once a visitor
+saves a URL, the page stores it in that browser's `localStorage` and prefers
+it over the config default from then on — no server-side write path, no
+per-user account system, just the one thing every browser already gives you
+for exactly this kind of per-visitor preference.
+
+`PrefetchScheduler.skip()` (used by `POST /api/skip`) queues a replacement
+track in Liquidsoap *before* sending `<queueId>.skip`, not after — sending
+skip first would leave dead air if nothing had been prefetched yet, the same
+failure mode already accepted for a late automatic advance (see below).
 
 ### Why Liquidsoap runs yt-dlp itself (`src/liquidsoap/telnet-client.ts`)
 

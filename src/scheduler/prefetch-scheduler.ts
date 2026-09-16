@@ -14,6 +14,16 @@ interface CurrentPlayback {
   startedAtMs: number
 }
 
+export interface PlaybackStatusTrack {
+  title: string
+  durationSec: number
+}
+
+export interface PlaybackStatus {
+  current: (PlaybackStatusTrack & { elapsedSec: number }) | null
+  next: PlaybackStatusTrack | null
+}
+
 /**
  * Drives gapless playback.
  *
@@ -63,6 +73,50 @@ export class PrefetchScheduler {
     if (this.tickHandle) {
       clearInterval(this.tickHandle)
       this.tickHandle = null
+    }
+  }
+
+  /** Snapshot of what's currently playing and what's queued next, for the dashboard. */
+  getStatus(): PlaybackStatus {
+    if (!this.playback) return { current: null, next: null }
+
+    return {
+      current: {
+        title: this.playback.track.title,
+        durationSec: this.playback.track.durationSec,
+        elapsedSec: Math.max(0, (Date.now() - this.playback.startedAtMs) / 1000),
+      },
+      next: this.prefetched
+        ? { title: this.prefetched.title, durationSec: this.prefetched.durationSec }
+        : null,
+    }
+  }
+
+  /**
+   * Manually ends the current track right now (dashboard "skip" button).
+   * Makes sure a replacement is queued in Liquidsoap *before* sending the
+   * skip command — skipping first would leave dead air if nothing was
+   * prefetched yet, same failure mode as a late automatic advance.
+   */
+  async skip(): Promise<void> {
+    if (this.stopped || !this.playback || this.ticking) return
+    this.ticking = true
+    try {
+      if (this.prefetchPromise) {
+        await this.prefetchPromise
+      }
+      if (!this.prefetched) {
+        await this.prefetchNext()
+      }
+      if (!this.prefetched) {
+        this.log.error('Skip requested but no playable track is queued — ignoring')
+        return
+      }
+
+      await this.liquidsoap.skipCurrent(this.config.liquidsoap.queueId)
+      this.commitPlayback(this.prefetched, Date.now())
+    } finally {
+      this.ticking = false
     }
   }
 

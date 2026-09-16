@@ -4,6 +4,7 @@ import { Logger } from './logger/logger.js'
 import { PlaylistManager } from './playlist/playlist-manager.js'
 import { PrefetchScheduler } from './scheduler/prefetch-scheduler.js'
 import { errorMessage } from './util/format.js'
+import { startWebServer } from './web/server.js'
 import { fetchPlaylistEntries } from './ytdlp/client.js'
 
 async function main() {
@@ -20,10 +21,12 @@ async function main() {
   const playlist = new PlaylistManager(entries, config.loop)
   const liquidsoap = new LiquidsoapClient(config.liquidsoap, log)
   const scheduler = new PrefetchScheduler(playlist, liquidsoap, config, log)
+  const webServer = config.web.enabled ? startWebServer(config, scheduler, log) : null
 
   const shutdown = (signal: string) => {
     log.info(`Received ${signal}, shutting down`)
     scheduler.stop()
+    webServer?.close()
     process.exit(0)
   }
   process.on('SIGINT', () => shutdown('SIGINT'))

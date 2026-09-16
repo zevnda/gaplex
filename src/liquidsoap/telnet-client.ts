@@ -58,6 +58,18 @@ export class LiquidsoapClient {
    * right before running it. Skipping this would silently truncate the
    * command at "https" and leave Liquidsoap trying to run garbage.
    */
+  /**
+   * Ends the current track immediately via Liquidsoap's `<id>.skip` server
+   * command (inherited by `request.queue` from the base source), moving on
+   * to whatever's already sitting in the queue. If nothing's queued yet this
+   * leaves dead air until the next `pushRequest` — callers should push a
+   * replacement request before skipping, not after.
+   */
+  async skipCurrent(queueId: string): Promise<void> {
+    const response = await this.sendCommand(`${queueId}.skip`)
+    this.log.debug(`Liquidsoap response: ${response.trim() || '(empty)'}`)
+  }
+
   private buildProcessUri({ videoUrl, audioExt }: YtdlpQueueRequest): string {
     const command = [
       this.config.ytdlpBinary,

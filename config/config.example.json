@@ -26,5 +26,11 @@
   "scheduler": {
     "tickIntervalMs": 1000
   },
+  "web": {
+    "enabled": true,
+    "host": "0.0.0.0",
+    "port": 4242,
+    "radioStreamUrl": "http://localhost:8000/stream.mp3"
+  },
   "logLevel": "info"
 }
