@@ -44,6 +44,48 @@ export class LiquidsoapClient {
   }
 
   /**
+   * Ends the current track immediately via Liquidsoap's `<id>.skip` server
+   * command (inherited by `request.queue` from the base source), moving on
+   * to whatever's already sitting in the queue. If nothing's queued yet this
+   * leaves dead air until the next `pushRequest` — callers should push a
+   * replacement request before skipping, not after.
+   */
+  async skipCurrent(queueId: string): Promise<void> {
+    const response = await this.sendCommand(`${queueId}.skip`)
+    this.log.debug(`Liquidsoap response: ${response.trim() || '(empty)'}`)
+  }
+
+  /**
+   * Removes every request still *waiting* in the queue, without touching
+   * whatever's currently playing — used by the dashboard's playlist switch
+   * so a stale request from the old playlist never gets a chance to play,
+   * but nothing already on air gets cut off.
+   *
+   * `request.queue`'s own definition (`src/libs/request.liq` in the
+   * `savonet/liquidsoap` source, checked against v2.4.5, the same version
+   * pinned for the `process:` URI work above) exposes `queue` (returns the
+   * pending requests' ids, space-separated) and `remove <rid>` (drops one by
+   * id) as separate telnet commands, and both only ever touch the *pending*
+   * array — the currently-playing request lives elsewhere (`current`), never
+   * in that list. There's also `flush_and_skip`, a single command that clears
+   * the queue *and* skips — deliberately not used here, since skipping is
+   * exactly the interruption this method exists to avoid.
+   */
+  async flushQueue(queueId: string): Promise<void> {
+    const response = await this.sendCommand(`${queueId}.queue`)
+    const ids = response
+      .split(/\r?\nEND\r?\n?/)[0]
+      ?.trim()
+      .split(/\s+/)
+      .filter(Boolean)
+
+    for (const id of ids ?? []) {
+      const removeResponse = await this.sendCommand(`${queueId}.remove ${id}`)
+      this.log.debug(`Liquidsoap response: ${removeResponse.trim() || '(empty)'}`)
+    }
+  }
+
+  /**
    * Builds a Liquidsoap `process:` protocol URI: `process:<extname>,<cmd>`.
    * Liquidsoap creates an empty temp file with the `.<extname>` extension,
    * substitutes `$(output)` in `<cmd>` with that file's path, runs `<cmd>`
@@ -58,18 +100,6 @@ export class LiquidsoapClient {
    * right before running it. Skipping this would silently truncate the
    * command at "https" and leave Liquidsoap trying to run garbage.
    */
-  /**
-   * Ends the current track immediately via Liquidsoap's `<id>.skip` server
-   * command (inherited by `request.queue` from the base source), moving on
-   * to whatever's already sitting in the queue. If nothing's queued yet this
-   * leaves dead air until the next `pushRequest` — callers should push a
-   * replacement request before skipping, not after.
-   */
-  async skipCurrent(queueId: string): Promise<void> {
-    const response = await this.sendCommand(`${queueId}.skip`)
-    this.log.debug(`Liquidsoap response: ${response.trim() || '(empty)'}`)
-  }
-
   private buildProcessUri({ videoUrl, audioExt }: YtdlpQueueRequest): string {
     const command = [
       this.config.ytdlpBinary,

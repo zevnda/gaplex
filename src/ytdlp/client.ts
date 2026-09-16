@@ -27,6 +27,10 @@ interface VideoInfoRaw {
   /** Container extension of the resolved format, e.g. "webm", "m4a". */
   ext?: string
   thumbnail?: string
+  /** Populated by yt-dlp's YouTube extractor from the video's "Music"
+   *  attribution panel, when present — not every video has one. */
+  artist?: string
+  creator?: string
 }
 
 /**
@@ -121,6 +125,7 @@ export async function fetchTrackDetails(entry: PlaylistEntry, config: YtdlpConfi
     videoUrl: entry.url,
     audioExt: raw.ext,
     thumbnailUrl: raw.thumbnail ?? null,
+    artist: raw.artist ?? raw.creator ?? null,
     resolvedAt: Date.now(),
   }
   return track

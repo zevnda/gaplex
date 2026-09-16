@@ -8,7 +8,7 @@ import { startWebServer } from './web/server.js'
 import { fetchPlaylistEntries } from './ytdlp/client.js'
 
 async function main() {
-  const config = await loadConfig(process.argv.slice(2))
+  const { config, configPath } = await loadConfig(process.argv.slice(2))
   const log = new Logger(config.logLevel)
 
   log.info(`Loading playlist: ${config.playlistUrl}`)
@@ -20,7 +20,7 @@ async function main() {
 
   const playlist = new PlaylistManager(entries, config.loop)
   const liquidsoap = new LiquidsoapClient(config.liquidsoap, log)
-  const scheduler = new PrefetchScheduler(playlist, liquidsoap, config, log)
+  const scheduler = new PrefetchScheduler(playlist, liquidsoap, config, log, configPath)
   const webServer = config.web.enabled ? await startWebServer(config, scheduler, log) : null
 
   const shutdown = (signal: string) => {

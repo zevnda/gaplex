@@ -17,15 +17,21 @@
   var saveUrlBtn = document.getElementById('save-url')
   var statusLine = document.getElementById('status-line')
   var currentTitleEl = document.getElementById('current-title')
+  var currentArtistEl = document.getElementById('current-artist')
   var art = document.getElementById('art')
   var artPlaceholder = document.getElementById('art-placeholder')
   var progressFill = document.getElementById('progress-fill')
   var timeElapsedEl = document.getElementById('time-elapsed')
   var timeRemainingEl = document.getElementById('time-remaining')
   var nextTitleEl = document.getElementById('next-title')
+  var nextArtistEl = document.getElementById('next-artist')
   var nextDurationEl = document.getElementById('next-duration')
   var nextArt = document.getElementById('next-art')
   var nextArtPlaceholder = document.getElementById('next-art-placeholder')
+  var currentPlaylistUrlEl = document.getElementById('current-playlist-url')
+  var playlistUrlInput = document.getElementById('playlist-url')
+  var switchPlaylistBtn = document.getElementById('save-playlist-url')
+  var playlistStatusLine = document.getElementById('playlist-status-line')
 
   // Local copy of the last /api/status response, plus when we fetched it —
   // the 1s tick below interpolates elapsed time between polls so the
@@ -65,6 +71,11 @@
     imgEl.hidden = true
     placeholderEl.hidden = false
     imgEl.src = url
+  }
+
+  function setArtist(el, artist) {
+    el.textContent = artist || ''
+    el.hidden = !artist
   }
 
   function setPlayingIcon(isPlaying) {
@@ -159,6 +170,46 @@
     statusLine.textContent = 'Could not load that stream URL.'
   })
 
+  switchPlaylistBtn.addEventListener('click', function () {
+    var value = playlistUrlInput.value.trim()
+    if (!value) return
+
+    switchPlaylistBtn.disabled = true
+    playlistUrlInput.disabled = true
+    playlistStatusLine.textContent = 'Loading playlist… this can take a while for a large one.'
+
+    fetch('/api/playlist', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ playlistUrl: value }),
+    })
+      .then(function (res) {
+        return res.json().then(function (data) {
+          if (!res.ok || !data.ok) throw new Error(data.error || 'Switch failed')
+          return data
+        })
+      })
+      .then(function (data) {
+        var message =
+          'Switched — ' +
+          data.trackCount +
+          ' track(s) loaded, takes effect after the current track.'
+        if (!data.persisted) {
+          message += ' Could not save to the config file, though — a restart will revert this.'
+        }
+        playlistStatusLine.textContent = message
+        playlistUrlInput.value = ''
+        refreshStatus()
+      })
+      .catch(function (error) {
+        playlistStatusLine.textContent = 'Could not switch playlist: ' + error.message
+      })
+      .finally(function () {
+        switchPlaylistBtn.disabled = false
+        playlistUrlInput.disabled = false
+      })
+  })
+
   skipBtn.addEventListener('click', function () {
     skipBtn.disabled = true
     fetch('/api/skip', { method: 'POST' })
@@ -178,22 +229,32 @@
     lastStatus = data
     lastStatusAtMs = Date.now()
 
+    currentPlaylistUrlEl.textContent = data.playlistUrl
+
     if (data.current) {
       currentTitleEl.textContent = data.current.title
+      currentTitleEl.href = data.current.videoUrl
+      setArtist(currentArtistEl, data.current.artist)
       setArt(art, artPlaceholder, data.current.thumbnailUrl)
     } else {
       currentTitleEl.textContent = 'Waiting for playback…'
+      currentTitleEl.removeAttribute('href')
+      setArtist(currentArtistEl, null)
       setArt(art, artPlaceholder, null)
     }
 
     if (data.next) {
       nextTitleEl.textContent = data.next.title
+      nextTitleEl.href = data.next.videoUrl
       nextTitleEl.classList.remove('empty')
+      setArtist(nextArtistEl, data.next.artist)
       nextDurationEl.textContent = formatClock(data.next.durationSec)
       setArt(nextArt, nextArtPlaceholder, data.next.thumbnailUrl)
     } else {
       nextTitleEl.textContent = 'Not queued yet'
+      nextTitleEl.removeAttribute('href')
       nextTitleEl.classList.add('empty')
+      setArtist(nextArtistEl, null)
       nextDurationEl.textContent = ''
       setArt(nextArt, nextArtPlaceholder, null)
     }

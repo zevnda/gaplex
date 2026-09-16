@@ -301,8 +301,11 @@ A small `node:http` server (`server.ts`) serves the static page under
 `public/` (`index.html`/`styles.css`/`app.js` — real files, not an inline
 template string, so the browser-side script gets normal JS tooling) plus the
 JSON API it polls/posts to: `GET /api/status` (current + next track, each
-with a `thumbnailUrl`), `GET /api/config` (the configured default stream
-URL), `POST /api/skip`. `public/` isn't `.ts`, so `tsc` never touches it;
+with a `thumbnailUrl`, `artist` — null when yt-dlp found no "Music"
+attribution for that video — and `videoUrl`, which the dashboard links the
+title to, plus the live `playlistUrl`), `GET /api/config` (the
+configured default stream URL), `POST /api/skip`, `POST /api/playlist`
+(switch the running playlist). `public/` isn't `.ts`, so `tsc` never touches it;
 `pnpm build` copies it into `dist/web/public` afterwards
 (`scripts/copy-assets.mjs`) — `server.ts` resolves it relative to its own
 compiled location so the same code works run from `src/` (`tsx`) or `dist/`.
@@ -331,6 +334,39 @@ for exactly this kind of per-visitor preference.
 track in Liquidsoap *before* sending `<queueId>.skip`, not after — sending
 skip first would leave dead air if nothing had been prefetched yet, the same
 failure mode already accepted for a late automatic advance (see below).
+
+`PrefetchScheduler.switchPlaylist()` (used by `POST /api/playlist`) resolves
+the new playlist's entries, flushes whatever was already queued from the
+*old* one out of Liquidsoap, and swaps the new entries into the live
+`PlaylistManager` (`PlaylistManager.replaceEntries()`). Whatever's playing
+right now keeps playing uninterrupted — cutting off live audio just to switch
+a moment sooner isn't worth it — but nothing else from the old playlist plays
+after it; the very next track already comes from the new one.
+
+The flush (`LiquidsoapClient.flushQueue()`) only works because of something
+verified directly against `request.queue`'s actual definition
+(`src/libs/request.liq` in the `savonet/liquidsoap` source, checked against
+v2.4.5, the same version pinned for the `process:` URI work below): its
+telnet interface separately exposes `queue` (list pending, not-yet-playing
+request ids) and `remove <rid>` (drop one by id) from `skip`/`current` — the
+pending array and the actively-playing request are genuinely different
+things internally, not just different views of the same queue. There's also
+a combined `flush_and_skip` command in that same file, deliberately not used
+here since skipping is exactly the interruption this avoids. Don't assume
+this kind of Liquidsoap protocol detail from published docs, which don't
+cover it — check the actual source, pinned to the deployed version, the way
+this was (see also "Testing", below).
+
+The new playlist URL is also persisted to `config/config.json`
+(`persistPlaylistUrl()` in `src/config/load-config.ts`) so a restart doesn't
+revert it — it rewrites just the `playlistUrl` field, re-reading the file
+first rather than trusting the in-memory copy, so it doesn't clobber other
+fields someone hand-edited on disk since startup. This requires the config
+file to actually be writable from inside the container; the docker-compose
+setup in Installation step 5 already mounts it that way (no `:ro`) for
+exactly this reason. If the write fails (read-only mount, permissions), the
+switch still takes effect live — it just won't survive a restart, and the
+dashboard says so (`persisted: false` in the `POST /api/playlist` response).
 
 ### Why Liquidsoap runs yt-dlp itself (`src/liquidsoap/telnet-client.ts`)
 

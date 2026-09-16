@@ -53,4 +53,16 @@ export class PlaylistManager {
   dropEntry(entryId: string): void {
     this.entries = this.entries.filter(entry => entry.id !== entryId)
   }
+
+  /**
+   * Swaps in a whole new playlist (dashboard "switch playlist"). Deliberately
+   * leaves `currentId` untouched — whatever's already playing keeps playing.
+   * Since that id won't exist in the new `entries`, the next `peekNext()`
+   * call finds no match (`findIndex` returns -1), which falls through to
+   * `entries[0]` exactly like a fresh `currentId === null` start would — no
+   * special-casing needed to make the new playlist take over from there.
+   */
+  replaceEntries(entries: PlaylistEntry[]): void {
+    this.entries = [...entries]
+  }
 }

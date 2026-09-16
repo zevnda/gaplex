@@ -1,7 +1,7 @@
 import type { AppConfig } from '../config/types.js'
 import type { Logger } from '../logger/logger.js'
 import type { PrefetchScheduler } from '../scheduler/prefetch-scheduler.js'
-import type { ServerResponse } from 'node:http'
+import type { IncomingMessage, ServerResponse } from 'node:http'
 
 import { readFile } from 'node:fs/promises'
 import { createServer } from 'node:http'
@@ -9,6 +9,9 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { errorMessage } from '../util/format.js'
+
+/** A playlist URL is a few hundred bytes at most; anything past this is bogus. */
+const MAX_BODY_BYTES = 10_000
 
 /**
  * Static assets live as real `.html`/`.css`/`.js` files under `public/`
@@ -31,8 +34,8 @@ const STATIC_ASSETS: Record<string, { file: string; contentType: string }> = {
 /**
  * Serves the now-playing dashboard: the static page/assets above, plus the
  * small JSON API it polls (`/api/status`, `/api/config`) and posts to
- * (`/api/skip`). Kept as a plain `node:http` server rather than pulling in a
- * framework — a handful of fixed routes don't need one.
+ * (`/api/skip`, `/api/playlist`). Kept as a plain `node:http` server rather
+ * than pulling in a framework — a handful of fixed routes don't need one.
  */
 export async function startWebServer(config: AppConfig, scheduler: PrefetchScheduler, log: Logger) {
   const assets = new Map<string, { body: string; contentType: string }>()
@@ -73,6 +76,11 @@ export async function startWebServer(config: AppConfig, scheduler: PrefetchSched
       return
     }
 
+    if (method === 'POST' && url === '/api/playlist') {
+      handlePlaylistSwitch(req, res, scheduler, log)
+      return
+    }
+
     res.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' })
     res.end('Not found')
   })
@@ -88,4 +96,67 @@ export async function startWebServer(config: AppConfig, scheduler: PrefetchSched
 function sendJson(res: ServerResponse, status: number, body: unknown) {
   res.writeHead(status, { 'content-type': 'application/json; charset=utf-8' })
   res.end(JSON.stringify(body))
+}
+
+/**
+ * Resolving a whole new playlist (yt-dlp's flat-playlist listing) can take a
+ * while for a large one, up to `ytdlp.playlistTimeoutMs` — this just holds
+ * the request open for that long rather than adding a background-job/polling
+ * mechanism, which isn't worth it for what's effectively a one-operator
+ * admin action.
+ */
+function handlePlaylistSwitch(
+  req: IncomingMessage,
+  res: ServerResponse,
+  scheduler: PrefetchScheduler,
+  log: Logger,
+) {
+  readJsonBody(req)
+    .then(body => {
+      const playlistUrl =
+        typeof body === 'object' &&
+        body !== null &&
+        typeof (body as { playlistUrl?: unknown }).playlistUrl === 'string'
+          ? (body as { playlistUrl: string }).playlistUrl.trim()
+          : ''
+
+      if (!/^https?:\/\//.test(playlistUrl)) {
+        sendJson(res, 400, { ok: false, error: 'playlistUrl must be an http(s) URL' })
+        return
+      }
+
+      return scheduler.switchPlaylist(playlistUrl).then(({ trackCount, persisted }) => {
+        sendJson(res, 200, { ok: true, playlistUrl, trackCount, persisted })
+      })
+    })
+    .catch(error => {
+      log.error(`Dashboard playlist switch failed: ${errorMessage(error)}`)
+      sendJson(res, 500, { ok: false, error: errorMessage(error) })
+    })
+}
+
+function readJsonBody(req: IncomingMessage) {
+  return new Promise<unknown>((resolve, reject) => {
+    const chunks: Buffer[] = []
+    let size = 0
+
+    req.on('data', (chunk: Buffer) => {
+      size += chunk.length
+      if (size > MAX_BODY_BYTES) {
+        reject(new Error('Request body too large'))
+        req.destroy()
+        return
+      }
+      chunks.push(chunk)
+    })
+    req.on('end', () => {
+      const raw = Buffer.concat(chunks).toString('utf8')
+      try {
+        resolve(raw ? JSON.parse(raw) : {})
+      } catch {
+        reject(new Error('Invalid JSON body'))
+      }
+    })
+    req.on('error', reject)
+  })
 }

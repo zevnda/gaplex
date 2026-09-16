@@ -1,8 +1,9 @@
 import type { AppConfig, ConfigFileInput } from './types.js'
 
-import { readFile } from 'node:fs/promises'
+import { readFile, writeFile } from 'node:fs/promises'
 
 import { parseCliArgs } from '../util/args.js'
+import { errorMessage } from '../util/format.js'
 
 const DEFAULT_CONFIG_PATH = 'config/config.json'
 
@@ -44,7 +45,10 @@ const DEFAULTS: Omit<AppConfig, 'playlistUrl'> = {
 
 /**
  * Loads and validates the app config: a JSON file merged with defaults, with
- * `--config`/`--playlist` CLI args applied on top.
+ * `--config`/`--playlist` CLI args applied on top. Returns `configPath`
+ * alongside it so callers that later persist a live change (e.g. the
+ * dashboard's playlist switch, see `persistPlaylistUrl`) write back to the
+ * same file this was loaded from, `--config` override included.
  */
 export async function loadConfig(argv: string[]) {
   const cli = parseCliArgs(argv)
@@ -67,7 +71,36 @@ export async function loadConfig(argv: string[]) {
   }
 
   validateConfig(merged)
-  return merged
+  return { config: merged, configPath }
+}
+
+/**
+ * Rewrites just `playlistUrl` in the config file at `configPath`, preserving
+ * every other field — used so a dashboard playlist switch survives a
+ * restart. Re-reads the file rather than reusing the already-parsed config
+ * in memory, so it doesn't clobber other fields someone may have hand-edited
+ * on disk since startup. Failure here (e.g. a read-only config mount) is the
+ * caller's to decide how to report — this only throws, it doesn't log.
+ */
+export async function persistPlaylistUrl(configPath: string, playlistUrl: string) {
+  let fileInput: ConfigFileInput
+  try {
+    fileInput = await readConfigFile(configPath)
+  } catch (error) {
+    throw new Error(`Could not read "${configPath}" to persist playlist: ${errorMessage(error)}`, {
+      cause: error,
+    })
+  }
+
+  fileInput.playlistUrl = playlistUrl
+
+  try {
+    await writeFile(configPath, `${JSON.stringify(fileInput, null, 2)}\n`, 'utf8')
+  } catch (error) {
+    throw new Error(`Could not write "${configPath}" to persist playlist: ${errorMessage(error)}`, {
+      cause: error,
+    })
+  }
 }
 
 async function readConfigFile(path: string) {

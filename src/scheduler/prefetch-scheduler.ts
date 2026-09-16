@@ -4,9 +4,10 @@ import type { Logger } from '../logger/logger.js'
 import type { PlaylistManager } from '../playlist/playlist-manager.js'
 import type { PlaylistEntry, TrackMetadata } from '../types/track.js'
 
+import { persistPlaylistUrl } from '../config/load-config.js'
 import { errorMessage, formatDuration } from '../util/format.js'
 import { withRetry } from '../util/retry.js'
-import { fetchTrackDetails } from '../ytdlp/client.js'
+import { fetchPlaylistEntries, fetchTrackDetails } from '../ytdlp/client.js'
 
 interface CurrentPlayback {
   track: TrackMetadata
@@ -16,11 +17,15 @@ interface CurrentPlayback {
 
 export interface PlaybackStatusTrack {
   title: string
+  artist: string | null
   durationSec: number
   thumbnailUrl: string | null
+  /** Canonical watch URL — the dashboard links the track title to this. */
+  videoUrl: string
 }
 
 export interface PlaybackStatus {
+  playlistUrl: string
   current: (PlaybackStatusTrack & { elapsedSec: number }) | null
   next: PlaybackStatusTrack | null
 }
@@ -56,13 +61,18 @@ export class PrefetchScheduler {
   private tickHandle: NodeJS.Timeout | null = null
   private ticking = false
   private stopped = false
+  private currentPlaylistUrl: string
 
   constructor(
     private readonly playlist: PlaylistManager,
     private readonly liquidsoap: LiquidsoapClient,
     private readonly config: AppConfig,
     private readonly log: Logger,
-  ) {}
+    /** Where `config` was loaded from — a playlist switch writes back here. */
+    private readonly configPath: string,
+  ) {
+    this.currentPlaylistUrl = config.playlistUrl
+  }
 
   async start(): Promise<void> {
     const firstTrack = await this.resolveNextPlayable(() => this.playlist.peekFirst())
@@ -92,20 +102,25 @@ export class PrefetchScheduler {
 
   /** Snapshot of what's currently playing and what's queued next, for the dashboard. */
   getStatus(): PlaybackStatus {
-    if (!this.playback) return { current: null, next: null }
+    if (!this.playback) return { playlistUrl: this.currentPlaylistUrl, current: null, next: null }
 
     return {
+      playlistUrl: this.currentPlaylistUrl,
       current: {
         title: this.playback.track.title,
+        artist: this.playback.track.artist,
         durationSec: this.playback.track.durationSec,
         thumbnailUrl: this.playback.track.thumbnailUrl,
+        videoUrl: this.playback.track.videoUrl,
         elapsedSec: Math.max(0, (Date.now() - this.playback.startedAtMs) / 1000),
       },
       next: this.prefetched
         ? {
             title: this.prefetched.title,
+            artist: this.prefetched.artist,
             durationSec: this.prefetched.durationSec,
             thumbnailUrl: this.prefetched.thumbnailUrl,
+            videoUrl: this.prefetched.videoUrl,
           }
         : null,
     }
@@ -138,6 +153,63 @@ export class PrefetchScheduler {
     } finally {
       this.ticking = false
     }
+  }
+
+  /**
+   * Dashboard "switch playlist": resolves the new playlist's entries, flushes
+   * whatever was already queued from the *old* one out of Liquidsoap
+   * (`LiquidsoapClient.flushQueue` — removes only what's still pending, never
+   * whatever's actively playing), and swaps the new entries into the live
+   * `PlaylistManager`. Whatever's playing right now keeps playing —
+   * interrupting live audio just to switch a moment sooner isn't worth it —
+   * but nothing else from the old playlist gets a chance to play after it:
+   * the very next track is pulled from the new one.
+   *
+   * If a prefetch from the old playlist was still in flight when this was
+   * called, it's awaited first rather than left to race the flush below —
+   * otherwise it could finish and push its (stale) result *after* the flush,
+   * putting old-playlist content right back in the queue.
+   *
+   * Also persists the new URL to `config/config.json` (`persistPlaylistUrl`)
+   * so it survives a restart — but that's a separate concern from the switch
+   * itself, and this is a personal radio config file, not something to leave
+   * silently out of sync: a failed write (read-only mount, permissions) is
+   * reported back via `persisted: false` rather than failing the whole
+   * switch, which already took effect live regardless.
+   */
+  async switchPlaylist(playlistUrl: string): Promise<{ trackCount: number; persisted: boolean }> {
+    const entries = await fetchPlaylistEntries(playlistUrl, this.config.ytdlp, this.log)
+    if (entries.length === 0) {
+      throw new Error('Playlist contained no available tracks')
+    }
+
+    if (this.prefetchPromise) {
+      await this.prefetchPromise
+    }
+    await this.liquidsoap.flushQueue(this.config.liquidsoap.queueId)
+    this.prefetched = null
+
+    this.playlist.replaceEntries(entries)
+    this.currentPlaylistUrl = playlistUrl
+    this.log.info(`Switched playlist to ${playlistUrl} (${entries.length} track(s))`)
+
+    this.beginPrefetch()
+    if (this.prefetchPromise) {
+      await this.prefetchPromise
+    }
+
+    let persisted = true
+    try {
+      await persistPlaylistUrl(this.configPath, playlistUrl)
+    } catch (error) {
+      persisted = false
+      this.log.warn(
+        `Playlist switched live, but couldn't save it to "${this.configPath}" — ` +
+          `a restart will revert to the old one: ${errorMessage(error)}`,
+      )
+    }
+
+    return { trackCount: entries.length, persisted }
   }
 
   private async tick(): Promise<void> {

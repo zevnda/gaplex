@@ -28,6 +28,8 @@ export interface TrackMetadata {
   audioExt: string
   /** Thumbnail URL yt-dlp reported, if any — cosmetic only (dashboard art). */
   thumbnailUrl: string | null
+  /** Artist/creator yt-dlp reported, if any — cosmetic only (dashboard display). */
+  artist: string | null
   /** When this metadata was resolved (epoch ms), for debugging/logging. */
   resolvedAt: number
 }

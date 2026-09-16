@@ -21,7 +21,12 @@
 
         <div class="player-body">
           <div class="eyebrow">Now playing</div>
-          <h2 class="title" id="current-title">Waiting for playback&hellip;</h2>
+          <h2 class="title">
+            <a id="current-title" target="_blank" rel="noopener noreferrer"
+              >Waiting for playback&hellip;</a
+            >
+          </h2>
+          <div class="artist" id="current-artist"></div>
 
           <div class="progress">
             <div class="progress-track">
@@ -100,7 +105,10 @@
           <img id="next-art" class="next-art" alt="" hidden />
           <div class="next-art-placeholder" id="next-art-placeholder">&#9835;</div>
           <div class="next-info">
-            <div class="next-title" id="next-title">Not queued yet</div>
+            <a class="next-title" id="next-title" target="_blank" rel="noopener noreferrer"
+              >Not queued yet</a
+            >
+            <div class="next-artist" id="next-artist"></div>
             <div class="next-duration" id="next-duration"></div>
           </div>
         </div>
@@ -122,6 +130,29 @@
             <button id="save-url">Save</button>
           </div>
           <p class="status-line" id="status-line"></p>
+        </div>
+      </details>
+
+      <details class="settings-card">
+        <summary>Playlist</summary>
+        <div class="settings-body">
+          <p class="settings-hint">
+            Currently playing from: <code id="current-playlist-url">&hellip;</code>
+          </p>
+          <p class="settings-hint">
+            Switching takes effect for everyone as soon as the currently playing track ends &mdash;
+            whatever was already queued up next from the old playlist gets dropped, not played.
+            Saved to the config file too, so it survives a restart.
+          </p>
+          <div class="url-row">
+            <input
+              type="text"
+              id="playlist-url"
+              placeholder="https://music.youtube.com/playlist?list=..."
+            />
+            <button id="save-playlist-url">Switch</button>
+          </div>
+          <p class="status-line" id="playlist-status-line"></p>
         </div>
       </details>
     </div>
