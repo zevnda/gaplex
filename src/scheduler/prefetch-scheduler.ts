@@ -17,6 +17,7 @@ interface CurrentPlayback {
 export interface PlaybackStatusTrack {
   title: string
   durationSec: number
+  thumbnailUrl: string | null
 }
 
 export interface PlaybackStatus {
@@ -84,10 +85,15 @@ export class PrefetchScheduler {
       current: {
         title: this.playback.track.title,
         durationSec: this.playback.track.durationSec,
+        thumbnailUrl: this.playback.track.thumbnailUrl,
         elapsedSec: Math.max(0, (Date.now() - this.playback.startedAtMs) / 1000),
       },
       next: this.prefetched
-        ? { title: this.prefetched.title, durationSec: this.prefetched.durationSec }
+        ? {
+            title: this.prefetched.title,
+            durationSec: this.prefetched.durationSec,
+            thumbnailUrl: this.prefetched.thumbnailUrl,
+          }
         : null,
     }
   }

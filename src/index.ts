@@ -21,7 +21,7 @@ async function main() {
   const playlist = new PlaylistManager(entries, config.loop)
   const liquidsoap = new LiquidsoapClient(config.liquidsoap, log)
   const scheduler = new PrefetchScheduler(playlist, liquidsoap, config, log)
-  const webServer = config.web.enabled ? startWebServer(config, scheduler, log) : null
+  const webServer = config.web.enabled ? await startWebServer(config, scheduler, log) : null
 
   const shutdown = (signal: string) => {
     log.info(`Received ${signal}, shutting down`)

@@ -26,6 +26,7 @@ interface VideoInfoRaw {
   duration?: number
   /** Container extension of the resolved format, e.g. "webm", "m4a". */
   ext?: string
+  thumbnail?: string
 }
 
 /**
@@ -119,6 +120,7 @@ export async function fetchTrackDetails(entry: PlaylistEntry, config: YtdlpConfi
     durationSec: raw.duration,
     videoUrl: entry.url,
     audioExt: raw.ext,
+    thumbnailUrl: raw.thumbnail ?? null,
     resolvedAt: Date.now(),
   }
   return track

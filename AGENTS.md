@@ -109,32 +109,64 @@ deployed, tell the user this step is required and confirm it's done before
 continuing. Skipping it doesn't break Gaplex's own setup, it just means
 nothing will actually play once you're done.
 
-### 5. Build and run
+### 5. Build and run (via Docker Compose)
 
-```bash
-docker build -t gaplex .
-docker run -d \
-  --name gaplex \
-  --restart unless-stopped \
-  -p 4242:4242 \
-  -v "$(pwd)/config/config.json:/app/config/config.json:ro" \
-  gaplex
+Gaplex should be deployed the same way as everything else in this stack —
+via `docker-compose.yml`, not standalone `docker run` — so that future
+updates are a single `docker compose up -d --build` rather than manual
+stop/rm/rebuild/run steps.
+
+Add a `gaplex` service to the same `docker-compose.yml` that already defines
+your Liquidsoap and Icecast services (this keeps all three on the same
+Docker network automatically, so `liquidsoap.host` in step 3 can just be the
+Liquidsoap service's name — no manual `--network` flag needed):
+
+```yaml
+  gaplex:
+    build: ./gaplex
+    container_name: gaplex
+    restart: unless-stopped
+    depends_on:
+      - liquidsoap
+    ports:
+      - 4242:4242
+    volumes:
+      - ./gaplex/config:/app/config
 ```
 
-The `-p 4242:4242` publishes the now-playing dashboard (see "Dashboard" below)
-at `http://<docker-host>:4242`. Drop it, or set `web.enabled` to `false` in
-the config, if you don't want it reachable.
+Then:
 
-If Liquidsoap runs on the Docker host itself rather than in a container, use
-`host.docker.internal` as `liquidsoap.host` instead of `127.0.0.1`, since
-`127.0.0.1` inside a container resolves to the container, not the host. If
-Liquidsoap runs in another container, put both containers on the same Docker
-network and use the Liquidsoap container's name as `liquidsoap.host`.
+```bash
+docker compose up -d --build gaplex
+```
+
+The `-p 4242:4242` (via the `ports:` block above) publishes the now-playing
+dashboard (see "Dashboard" below) at `http://<docker-host>:4242`. Drop it, or
+set `web.enabled` to `false` in the config, if you don't want it reachable.
+
+If Liquidsoap runs in the same `docker-compose.yml` (recommended, and how
+this doc assumes things are set up), use that service's name as
+`liquidsoap.host` — Docker Compose resolves service names to the right
+internal address automatically. If Liquidsoap runs on the Docker host
+itself rather than in a container, use `host.docker.internal` instead. If
+Liquidsoap runs in a separate `docker-compose.yml` project entirely, you'll
+need to either merge them into one file, or set up a shared external Docker
+network so both projects' containers can reach each other by name.
+
+**Updating Gaplex later:** pull the latest code, then re-run the build:
+
+```bash
+git pull
+docker compose up -d --build gaplex
+```
+
+This rebuilds the image and replaces the running container in one step — no
+need to manually stop, remove, or re-run anything.
 
 ### 6. Verify it worked
 
 ```bash
-docker logs -f gaplex
+docker compose logs -f gaplex
 ```
 
 Success looks like:
@@ -257,15 +289,27 @@ class of bug entirely.
 
 ### Dashboard (`src/web/`)
 
-A small `node:http` server (`server.ts`) serves one page (`dashboard-page.ts`,
-inline HTML/CSS/JS — no bundler, since `tsc`'s build has no asset-copy step)
-plus the JSON API it polls/posts to: `GET /api/status` (current + next track),
-`GET /api/config` (the configured default stream URL), `POST /api/skip`.
+A small `node:http` server (`server.ts`) serves the static page under
+`public/` (`index.html`/`styles.css`/`app.js` — real files, not an inline
+template string, so the browser-side script gets normal JS tooling) plus the
+JSON API it polls/posts to: `GET /api/status` (current + next track, each
+with a `thumbnailUrl`), `GET /api/config` (the configured default stream
+URL), `POST /api/skip`. `public/` isn't `.ts`, so `tsc` never touches it;
+`pnpm build` copies it into `dist/web/public` afterwards
+(`scripts/copy-assets.mjs`) — `server.ts` resolves it relative to its own
+compiled location so the same code works run from `src/` (`tsx`) or `dist/`.
+It's excluded from the root ESLint config (`eslint.config.ts`) since it's
+browser JS with browser globals, not part of the Node/TS ruleset.
 
 The page embeds the actual Icecast stream in an `<audio>` element and tries
 to autoplay it; the play/pause button only controls that local `<audio>`
-element — it's a listening control, not a broadcast control. "Skip" is the
-only control that reaches back into Liquidsoap.
+element — it's a listening control, not a broadcast control. The progress
+bar under the track title is informational, not a seek control: a live
+Icecast stream has no seekable timeline, so it just visualizes the current
+track's known elapsed/remaining time (from `PrefetchScheduler.getStatus()`),
+interpolated client-side once a second between 4-second status polls so it
+moves smoothly without polling that often. "Skip" is the only control that
+reaches back into Liquidsoap.
 
 The Icecast stream URL is reachable from each listener's browser, not from
 wherever Gaplex runs, so it can't be a fixed server value: `web.radioStreamUrl`

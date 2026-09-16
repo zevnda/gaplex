@@ -26,6 +26,8 @@ export interface TrackMetadata {
    *  "m4a") — Liquidsoap needs this upfront to name its output file before
    *  running the download command. */
   audioExt: string
+  /** Thumbnail URL yt-dlp reported, if any — cosmetic only (dashboard art). */
+  thumbnailUrl: string | null
   /** When this metadata was resolved (epoch ms), for debugging/logging. */
   resolvedAt: number
 }

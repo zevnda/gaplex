@@ -4,7 +4,9 @@ import tseslint from 'typescript-eslint'
 
 export default tseslint.config(
   {
-    ignores: ['dist/**/*', 'node_modules/**/*'],
+    // Browser-side dashboard assets: plain JS with browser globals (document,
+    // fetch, localStorage, ...), not part of the Node/TS ruleset below.
+    ignores: ['dist/**/*', 'node_modules/**/*', 'src/web/public/**/*'],
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,
