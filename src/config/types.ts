@@ -69,8 +69,6 @@ export interface AppConfig {
   playlistUrl: string
   /** Restart from the beginning once the playlist ends. */
   loop: boolean
-  /** Seconds of remaining playback at which the next track is prefetched. */
-  prefetchThresholdSec: number
   ytdlp: YtdlpConfig
   retry: RetryConfig
   liquidsoap: LiquidsoapConfig
@@ -83,7 +81,6 @@ export interface AppConfig {
 export interface ConfigFileInput {
   playlistUrl?: string
   loop?: boolean
-  prefetchThresholdSec?: number
   ytdlp?: Partial<YtdlpConfig>
   retry?: Partial<RetryConfig>
   liquidsoap?: Partial<LiquidsoapConfig>

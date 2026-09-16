@@ -1,7 +1,6 @@
 {
   "playlistUrl": "https://music.youtube.com/playlist?list=PLxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
   "loop": true,
-  "prefetchThresholdSec": 35,
   "ytdlp": {
     "binaryPath": "yt-dlp",
     "extraArgs": [],

@@ -9,6 +9,9 @@
   var iconPlay = document.getElementById('icon-play')
   var iconPause = document.getElementById('icon-pause')
   var volumeInput = document.getElementById('volume')
+  var muteToggleBtn = document.getElementById('mute-toggle')
+  var iconVolume = document.getElementById('icon-volume')
+  var iconMute = document.getElementById('icon-mute')
   var skipBtn = document.getElementById('skip')
   var urlInput = document.getElementById('stream-url')
   var saveUrlBtn = document.getElementById('save-url')
@@ -40,9 +43,17 @@
   function setArt(imgEl, placeholderEl, url) {
     if (!url) {
       imgEl.hidden = true
+      imgEl.removeAttribute('src')
+      delete imgEl.dataset.url
       placeholderEl.hidden = false
       return
     }
+    // Setting `.src` again on every status poll (even to the same value)
+    // would re-hide the image until `onload` fires again — skip it once
+    // this exact URL is already showing.
+    if (imgEl.dataset.url === url) return
+
+    imgEl.dataset.url = url
     imgEl.onerror = function () {
       imgEl.hidden = true
       placeholderEl.hidden = false
@@ -51,6 +62,8 @@
       imgEl.hidden = false
       placeholderEl.hidden = true
     }
+    imgEl.hidden = true
+    placeholderEl.hidden = false
     imgEl.src = url
   }
 
@@ -58,6 +71,13 @@
     iconPlay.hidden = isPlaying
     iconPause.hidden = !isPlaying
     playPauseBtn.setAttribute('aria-label', isPlaying ? 'Pause' : 'Play')
+  }
+
+  function updateVolumeIcon() {
+    var isMuted = audio.muted || audio.volume === 0
+    iconVolume.hidden = isMuted
+    iconMute.hidden = !isMuted
+    muteToggleBtn.setAttribute('aria-label', isMuted ? 'Unmute' : 'Mute')
   }
 
   function setStreamUrl(url) {
@@ -94,6 +114,7 @@
     if (!Number.isFinite(volume) || volume < 0 || volume > 1) volume = 1
     audio.volume = volume
     volumeInput.value = String(volume)
+    updateVolumeIcon()
   }
 
   saveUrlBtn.addEventListener('click', function () {
@@ -107,8 +128,15 @@
   volumeInput.addEventListener('input', function () {
     var volume = Number(volumeInput.value)
     audio.volume = volume
+    audio.muted = false
     localStorage.setItem(STORAGE_VOLUME_KEY, String(volume))
   })
+
+  muteToggleBtn.addEventListener('click', function () {
+    audio.muted = !audio.muted
+  })
+
+  audio.addEventListener('volumechange', updateVolumeIcon)
 
   playPauseBtn.addEventListener('click', function () {
     if (audio.paused) {

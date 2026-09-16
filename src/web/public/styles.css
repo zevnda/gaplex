@@ -19,6 +19,15 @@
   box-sizing: border-box;
 }
 
+/* A component-specific `display` rule (author, normal) otherwise beats the
+   browser's own `[hidden] { display: none }` (user-agent, normal) in the
+   cascade regardless of selector order or specificity — origin wins first.
+   Without this, anything toggled via the `hidden` attribute AND given its
+   own `display` elsewhere (e.g. `.next-art-placeholder`) stays visible. */
+[hidden] {
+  display: none !important;
+}
+
 body {
   margin: 0;
   min-height: 100vh;
@@ -198,15 +207,21 @@ body {
 
 .controls {
   display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 6px;
+}
+
+.transport {
+  display: flex;
   align-items: center;
-  gap: 10px;
-  margin-top: 4px;
+  gap: 14px;
 }
 
 .play-btn {
   flex: 0 0 auto;
-  width: 40px;
-  height: 40px;
+  width: 52px;
+  height: 52px;
   border-radius: 50%;
   border: none;
   background: var(--text);
@@ -215,10 +230,22 @@ body {
   align-items: center;
   justify-content: center;
   cursor: pointer;
+  box-shadow: 0 6px 18px -6px rgba(0, 0, 0, 0.5);
+  transition:
+    transform 0.1s ease,
+    background 0.15s ease;
 }
 
 .play-btn svg {
-  margin-left: 1px;
+  margin-left: 2px;
+}
+
+.play-btn:hover:not(:disabled) {
+  transform: scale(1.05);
+}
+
+.play-btn:active:not(:disabled) {
+  transform: scale(0.97);
 }
 
 .play-btn:disabled {
@@ -226,43 +253,43 @@ body {
   cursor: default;
 }
 
-.volume {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  color: var(--text-muted);
-  min-width: 0;
-}
-
-.volume input[type='range'] {
-  flex: 1;
-  min-width: 0;
-  accent-color: var(--accent);
-}
-
-.skip-btn {
+.icon-btn {
   flex: 0 0 auto;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 9px 12px;
-  border-radius: var(--radius-sm);
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
   border: 1px solid var(--border);
   background: var(--surface-2);
   color: var(--text);
-  font-size: 13px;
-  font-weight: 500;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   cursor: pointer;
+  transition: background 0.15s ease;
 }
 
-.skip-btn:hover {
+.icon-btn:hover:not(:disabled) {
   background: #262632;
 }
 
-.skip-btn:disabled {
+.icon-btn:disabled {
   opacity: 0.5;
   cursor: default;
+}
+
+.volume-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 2px 4px;
+  color: var(--text-muted);
+}
+
+.volume-row input[type='range'] {
+  flex: 1;
+  min-width: 0;
+  accent-color: var(--accent);
+  height: 20px;
 }
 
 .next-row {
@@ -370,7 +397,7 @@ input[type='text'] {
 
 input[type='text']:focus,
 .play-btn:focus-visible,
-.skip-btn:focus-visible,
+.icon-btn:focus-visible,
 #save-url:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;

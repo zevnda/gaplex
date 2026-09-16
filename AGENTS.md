@@ -250,27 +250,35 @@ src/
   scheduler/    The prefetch scheduler — the core gapless-playback logic
   types/        Shared domain types (PlaylistEntry, TrackMetadata)
   util/         Small standalone helpers (retry/backoff, CLI args, formatting)
-  web/          Now-playing dashboard: HTTP server + inline HTML/CSS/JS page
+  web/          Now-playing dashboard: HTTP server + static HTML/CSS/JS page
   ytdlp/        yt-dlp process invocation and output parsing
 ```
 
 ### The prefetch scheduler (`src/scheduler/prefetch-scheduler.ts`)
 
 The scheduler tracks playback with its own clock, seeded from each track's
-known duration — it does **not** poll Liquidsoap's actual playhead. On a
-timer tick, once the time remaining on the current track drops below
-`prefetchThresholdSec`, it resolves the next track's metadata and pushes its
-request into Liquidsoap's queue immediately (not at the track boundary —
-that would defeat the purpose of prefetching). When the internal clock
-reaches the boundary, it just does local bookkeeping: hands off to the
-already-queued track and starts the next clock from
+known duration — it does **not** poll Liquidsoap's actual playhead. When the
+internal clock reaches the boundary, it just does local bookkeeping: hands
+off to the already-queued track and starts the next clock from
 `previous start time + previous duration`, not `Date.now()`, to avoid
 drifting from tick-interval rounding.
 
-If prefetch didn't finish in time (slow resolution, retries eating the
-buffer), there's a synchronous fallback at the boundary that resolves and
-pushes immediately — logged as a warning, since this is the one path that
-can cause an audible gap.
+It keeps exactly one track ahead resolved and queued at all times, and does
+so immediately after every commit (`beginPrefetch()`, called right after
+`commitPlayback()` at startup, at a normal boundary, and on a manual skip) —
+not on a countdown threshold as an earlier version of this scheduler did.
+There's no reason to wait: Gaplex pushes a Liquidsoap `process:` URI, not a
+resolved stream URL (see `liquidsoap/telnet-client.ts`), so nothing sitting
+in Liquidsoap's queue can go stale — the actual yt-dlp fetch happens fresh,
+on Liquidsoap's side, at play time. Resolving immediately instead of near
+the end just buys headroom (most of a track's duration to retry, instead of
+a few seconds) and is also what lets the dashboard show an "up next" track
+almost as soon as the current one starts, rather than only near its end.
+
+If that resolution is still slow enough to still be in flight at the track
+boundary (or failed every retry), there's a fallback in `advance()` that
+waits for it, then resolves synchronously if it still came up empty — logged
+as a warning, since this is the one path that can cause an audible gap.
 
 Failed resolutions are retried with backoff (`util/retry.ts`); an entry that
 exhausts its retry budget is permanently dropped from the playlist for the

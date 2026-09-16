@@ -34,29 +34,52 @@
           </div>
 
           <div class="controls">
-            <button id="play-pause" class="play-btn" disabled aria-label="Play">
-              <svg id="icon-play" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
-                <path d="M8 5v14l11-7z" fill="currentColor" />
-              </svg>
-              <svg
-                id="icon-pause"
-                viewBox="0 0 24 24"
-                width="20"
-                height="20"
-                aria-hidden="true"
-                hidden
-              >
-                <path d="M6 5h4v14H6zM14 5h4v14h-4z" fill="currentColor" />
-              </svg>
-            </button>
+            <div class="transport">
+              <button id="play-pause" class="play-btn" disabled aria-label="Play">
+                <svg id="icon-play" viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
+                  <path d="M8 5v14l11-7z" fill="currentColor" />
+                </svg>
+                <svg
+                  id="icon-pause"
+                  viewBox="0 0 24 24"
+                  width="22"
+                  height="22"
+                  aria-hidden="true"
+                  hidden
+                >
+                  <path d="M6 5h4v14H6zM14 5h4v14h-4z" fill="currentColor" />
+                </svg>
+              </button>
 
-            <div class="volume">
-              <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
-                <path
-                  d="M4 9v6h4l5 5V4L8 9H4zm11.5 3a4.5 4.5 0 0 0-2.5-4.03v8.06A4.5 4.5 0 0 0 15.5 12z"
-                  fill="currentColor"
-                />
-              </svg>
+              <button id="skip" class="icon-btn" aria-label="Skip current track">
+                <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+                  <path d="M6 5v14l10-7zM17 5v14h2V5z" fill="currentColor" />
+                </svg>
+              </button>
+            </div>
+
+            <div class="volume-row">
+              <button id="mute-toggle" class="icon-btn" aria-label="Mute">
+                <svg id="icon-volume" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+                  <path
+                    d="M4 9v6h4l5 5V4L8 9H4zm11.5 3a4.5 4.5 0 0 0-2.5-4.03v8.06A4.5 4.5 0 0 0 15.5 12z"
+                    fill="currentColor"
+                  />
+                </svg>
+                <svg
+                  id="icon-mute"
+                  viewBox="0 0 24 24"
+                  width="16"
+                  height="16"
+                  aria-hidden="true"
+                  hidden
+                >
+                  <path
+                    d="M16.5 12A4.5 4.5 0 0 0 14 7.97v2.06l2.45 2.45c.03-.16.05-.32.05-.48zM19 12c0 .94-.2 1.82-.54 2.64l1.51 1.51A8.965 8.965 0 0 0 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3 3 4.27 7.73 9H4v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06a8.99 8.99 0 0 0 3.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4 9.91 6.09 12 8.18V4z"
+                    fill="currentColor"
+                  />
+                </svg>
+              </button>
               <input
                 type="range"
                 id="volume"
@@ -67,13 +90,6 @@
                 aria-label="Volume"
               />
             </div>
-
-            <button id="skip" class="skip-btn" aria-label="Skip current track">
-              Skip
-              <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
-                <path d="M6 5v14l10-7zM17 5v14h2V5z" fill="currentColor" />
-              </svg>
-            </button>
           </div>
         </div>
       </section>

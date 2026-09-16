@@ -9,7 +9,6 @@ const DEFAULT_CONFIG_PATH = 'config/config.json'
 /** Defaults for everything except `playlistUrl`, which has no sane default. */
 const DEFAULTS: Omit<AppConfig, 'playlistUrl'> = {
   loop: true,
-  prefetchThresholdSec: 35,
   ytdlp: {
     binaryPath: 'yt-dlp',
     extraArgs: [],
@@ -55,7 +54,6 @@ export async function loadConfig(argv: string[]) {
   const merged: AppConfig = {
     playlistUrl: fileInput.playlistUrl ?? '',
     loop: fileInput.loop ?? DEFAULTS.loop,
-    prefetchThresholdSec: fileInput.prefetchThresholdSec ?? DEFAULTS.prefetchThresholdSec,
     ytdlp: { ...DEFAULTS.ytdlp, ...fileInput.ytdlp },
     retry: { ...DEFAULTS.retry, ...fileInput.retry },
     liquidsoap: { ...DEFAULTS.liquidsoap, ...fileInput.liquidsoap },
@@ -101,9 +99,6 @@ function validateConfig(config: AppConfig) {
     problems.push('playlistUrl is required (set it in the config file or pass --playlist <url>)')
   } else if (!/^https?:\/\//.test(config.playlistUrl)) {
     problems.push(`playlistUrl does not look like a URL: "${config.playlistUrl}"`)
-  }
-  if (config.prefetchThresholdSec <= 0) {
-    problems.push('prefetchThresholdSec must be greater than 0')
   }
   if (config.retry.maxAttempts < 1) {
     problems.push('retry.maxAttempts must be at least 1')

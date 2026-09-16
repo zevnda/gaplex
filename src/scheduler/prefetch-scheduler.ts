@@ -31,11 +31,23 @@ export interface PlaybackStatus {
  * The actual gapless join is Liquidsoap's job: once a track's request is
  * sitting in its `request.queue`, Liquidsoap resolves/buffers it and starts
  * it the instant the current track ends, with no gap. This class's only
- * responsibility is making sure that request is queued well before that
- * moment — resolving too early risks the signed stream URL going stale,
- * resolving too late risks missing the deadline, so it's driven by an
- * internal clock (seeded from known durations, not polled from Liquidsoap)
- * checked on a regular tick.
+ * responsibility is keeping exactly one track ahead resolved and queued at
+ * all times.
+ *
+ * That "one ahead, always" invariant is maintained the same way in every
+ * case — right after a track is committed as current (at startup, at a
+ * normal boundary, or on a manual skip), the *next* one is immediately
+ * resolved and pushed, rather than waiting until the current track is
+ * nearly over. There's no downside to doing it this early: Gaplex pushes a
+ * Liquidsoap `process:` URI, not a resolved stream URL (see
+ * `liquidsoap/telnet-client.ts`), so nothing here can go stale sitting in
+ * Liquidsoap's queue for a while — the actual yt-dlp fetch happens fresh,
+ * on Liquidsoap's side, at play time. Resolving early only buys headroom:
+ * a whole track's worth of time to retry if the next track's metadata
+ * lookup is slow or fails, instead of the few seconds a threshold-based
+ * prefetch would leave. It's also the only way the dashboard can reliably
+ * show an "up next" track — that information now exists almost as soon as
+ * the current one starts, not only near its end.
  */
 export class PrefetchScheduler {
   private playback: CurrentPlayback | null = null
@@ -63,6 +75,7 @@ export class PrefetchScheduler {
       audioExt: firstTrack.audioExt,
     })
     this.commitPlayback(firstTrack, Date.now())
+    this.beginPrefetch()
 
     this.tickHandle = setInterval(() => {
       this.tick().catch(error => this.log.error(`Scheduler tick failed: ${errorMessage(error)}`))
@@ -121,6 +134,7 @@ export class PrefetchScheduler {
 
       await this.liquidsoap.skipCurrent(this.config.liquidsoap.queueId)
       this.commitPlayback(this.prefetched, Date.now())
+      this.beginPrefetch()
     } finally {
       this.ticking = false
     }
@@ -133,25 +147,25 @@ export class PrefetchScheduler {
       const elapsedSec = (Date.now() - this.playback.startedAtMs) / 1000
       const remainingSec = this.playback.track.durationSec - elapsedSec
 
-      const shouldPrefetch =
-        !this.prefetched &&
-        !this.prefetchPromise &&
-        remainingSec <= this.config.prefetchThresholdSec
-      if (shouldPrefetch) {
-        this.log.info(
-          `"${this.playback.track.title}" has ~${Math.max(0, Math.round(remainingSec))}s left — prefetching next track`,
-        )
-        this.prefetchPromise = this.prefetchNext().finally(() => {
-          this.prefetchPromise = null
-        })
-      }
-
       if (remainingSec <= 0) {
         await this.advance()
       }
     } finally {
       this.ticking = false
     }
+  }
+
+  /**
+   * Kicks off resolving+queuing whatever comes after the current track, if
+   * that isn't already done or already in flight. Fire-and-forget: callers
+   * that need to know it's finished (`advance`, `skip`) await
+   * `this.prefetchPromise` instead of this method's own return value.
+   */
+  private beginPrefetch(): void {
+    if (this.prefetched || this.prefetchPromise) return
+    this.prefetchPromise = this.prefetchNext().finally(() => {
+      this.prefetchPromise = null
+    })
   }
 
   /** Resolves the next track and pushes it into Liquidsoap's queue ahead of time. */
@@ -176,14 +190,19 @@ export class PrefetchScheduler {
     this.log.info(`Queued next: "${next.title}" (${formatDuration(next.durationSec)})`)
   }
 
-  /** Called once the current track's known duration has elapsed. */
+  /**
+   * Called once the current track's known duration has elapsed. Under normal
+   * operation `this.prefetched` is already populated — it was resolved right
+   * after the current track started, not near its end — so this is usually
+   * just local bookkeeping. The wait/fallback below only matters if that
+   * resolution was unusually slow (retries eating a whole track's buffer) or
+   * still failed after every retry.
+   */
   private async advance(): Promise<void> {
     if (!this.playback) return
     const finished = this.playback.track
     const plannedStartMs = this.playback.startedAtMs + finished.durationSec * 1000
 
-    // If a prefetch is already in flight, wait for it rather than starting a
-    // second, redundant resolution.
     if (this.prefetchPromise) {
       await this.prefetchPromise
     }
@@ -203,6 +222,7 @@ export class PrefetchScheduler {
     }
 
     this.commitPlayback(this.prefetched, plannedStartMs)
+    this.beginPrefetch()
   }
 
   private commitPlayback(track: TrackMetadata, startedAtMs: number): void {
